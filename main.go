@@ -57,6 +57,25 @@ type pullRequest struct {
 	Links         links          `json:"_links"`
 }
 
+type prStatusContext struct {
+	Name  string `json:"name"`
+	Genre string `json:"genre"`
+}
+
+type prStatus struct {
+	State        string          `json:"state"`
+	Description  string          `json:"description"`
+	Context      prStatusContext `json:"context"`
+	TargetURL    string          `json:"targetUrl"`
+	CreationDate time.Time       `json:"creationDate"`
+	UpdatedDate  time.Time       `json:"updatedDate"`
+}
+
+type prStatusResponse struct {
+	Value []prStatus `json:"value"`
+	Count int        `json:"count"`
+}
+
 type config struct {
 	Org     string
 	Project string
@@ -82,7 +101,7 @@ func main() {
 	// sort by creation date desc
 	sort.Slice(prs, func(i, j int) bool { return prs[i].CreationDate.After(prs[j].CreationDate) })
 
-	printTable(prs)
+	printTable(cfg, prs)
 }
 
 func getConfig() config {
@@ -177,11 +196,11 @@ func fetchActivePRs(cfg config) ([]pullRequest, error) {
 	return prr.Value, nil
 }
 
-func printTable(prs []pullRequest) {
+func printTable(cfg config, prs []pullRequest) {
 	w := table.NewWriter()
 	w.SetOutputMirror(os.Stdout)
 	w.SetStyle(table.StyleColoredDark)
-	w.AppendHeader(table.Row{"PR", "Title", "Author", "Repo", "Source->Target", "Votes", "Created", "URL"})
+	w.AppendHeader(table.Row{"PR", "Title", "Author", "Repo", "Source->Target", "Votes", "Checks", "Created", "URL"})
 
 	for _, pr := range prs {
 		votes := summarizeVotesTyped(pr.Reviewers)
@@ -191,6 +210,7 @@ func printTable(prs []pullRequest) {
 		st := refShort(pr.SourceRefName) + "->" + refShort(pr.TargetRefName)
 		created := humanizeTime(pr.CreationDate)
 		url := pr.Links.Web.Href
+		status := getPRStatusOverall(cfg, pr)
 		w.AppendRow(table.Row{
 			fmt.Sprintf("%d", pr.PullRequestID),
 			title,
@@ -198,12 +218,91 @@ func printTable(prs []pullRequest) {
 			repo,
 			st,
 			votes,
+			status,
 			created,
 			url,
 		})
 	}
 
 	w.Render()
+}
+
+func getPRStatusOverall(cfg config, pr pullRequest) string {
+	// Build endpoint: https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repoId}/pullRequests/{pullRequestId}/statuses?api-version=...
+	base := fmt.Sprintf("https://dev.azure.com/%s/%s/_apis/git/repositories/%s/pullRequests/%d/statuses", url.PathEscape(cfg.Org), url.PathEscape(cfg.Project), url.PathEscape(pr.Repository.ID), pr.PullRequestID)
+	q := url.Values{}
+	q.Set("api-version", cfg.ApiVer)
+	endpoint := base + "?" + q.Encode()
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return "Unknown"
+	}
+	token := base64.StdEncoding.EncodeToString([]byte(":" + cfg.Pat))
+	req.Header.Set("Authorization", "Basic "+token)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "Unknown"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		return "Unauthorized"
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "Unknown"
+	}
+
+	var sr prStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sr); err != nil {
+		return "Unknown"
+	}
+
+	if len(sr.Value) == 0 {
+		return "No checks"
+	}
+
+	anyPending := false
+	anyFailed := false
+	anyError := false
+	anySucceeded := false
+	allSucceededOrNA := true
+
+	for _, s := range sr.Value {
+		state := strings.ToLower(s.State)
+		switch state {
+		case "succeeded", "success":
+			anySucceeded = true
+		case "pending", "inprogress", "in_progress":
+			anyPending = true
+			allSucceededOrNA = false
+		case "failed", "failure":
+			anyFailed = true
+			allSucceededOrNA = false
+		case "error":
+			anyError = true
+			allSucceededOrNA = false
+		case "notapplicable", "not_applicable", "notset":
+			// neutral
+		default:
+			// unknown -> treat as not fully succeeded
+			allSucceededOrNA = false
+		}
+	}
+
+	if anyFailed || anyError {
+		return "Failed"
+	}
+	if anyPending {
+		return "In Progress"
+	}
+	if anySucceeded && allSucceededOrNA {
+		return "Passed"
+	}
+	// If we reached here and there were statuses but none conclusive
+	return "Unknown"
 }
 
 func truncate(s string, max int) string {
