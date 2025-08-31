@@ -27,7 +27,7 @@ archives:
       - lazydevops
     format_overrides:
       - goos: windows
-        format: zip
+        format: binary
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
