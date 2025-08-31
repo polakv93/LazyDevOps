@@ -1,0 +1,52 @@
+﻿project_name: lazydevops
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: lazydevops
+    main: ./main.go
+    binary: lazydevops
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: archives
+    builds:
+      - lazydevops
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE* # if you add one later, it will be included
+      - README*  # readme if present
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^test:'
+
+release:
+  github:
+    owner: ${{ env.GITHUB_REPOSITORY_OWNER }}
+    name: ${{ env.GITHUB_REPOSITORY##*/ }}
+  draft: false
+  prerelease: false
