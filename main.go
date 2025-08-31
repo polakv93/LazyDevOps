@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
@@ -89,8 +91,7 @@ func main() {
 
 	prs, err := fetchActivePRs(cfg)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(1)
+		log.Fatalln("Error: ", err)
 	}
 
 	if len(prs) == 0 {
@@ -204,12 +205,12 @@ func printTable(cfg config, prs []pullRequest) {
 
 	for _, pr := range prs {
 		votes := summarizeVotesTyped(pr.Reviewers)
-		title := truncate(pr.Title, 60)
+		title := pr.Title
 		author := pr.CreatedBy.DisplayName
 		repo := pr.Repository.Name
 		st := refShort(pr.SourceRefName) + "->" + refShort(pr.TargetRefName)
-		created := humanizeTime(pr.CreationDate)
-		url := pr.Links.Web.Href
+		created := humanize.Time(pr.CreationDate)
+		href := pr.Links.Web.Href
 		status := getPRStatusOverall(cfg, pr)
 		w.AppendRow(table.Row{
 			fmt.Sprintf("%d", pr.PullRequestID),
@@ -220,7 +221,7 @@ func printTable(cfg config, prs []pullRequest) {
 			votes,
 			status,
 			created,
-			url,
+			href,
 		})
 	}
 
@@ -303,33 +304,6 @@ func getPRStatusOverall(cfg config, pr pullRequest) string {
 	}
 	// If we reached here and there were statuses but none conclusive
 	return "Unknown"
-}
-
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max-1] + "…"
-}
-
-func humanizeTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	d := time.Since(t)
-	if d < time.Minute {
-		return "just now"
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
-	if d < 30*24*time.Hour {
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
-	return t.Format("2006-01-02")
 }
 
 func refShort(ref string) string {
