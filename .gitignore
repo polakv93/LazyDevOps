@@ -1,0 +1,51 @@
+﻿# Go build artifacts
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of `go test` and other tooling
+*.out
+*.coverprofile
+coverage.*
+coverage/
+profile.out
+
+# Common build directories
+bin/
+build/
+dist/
+
+# If you vendor dependencies
+/vendor/
+
+# Logs
+*.log
+logs/
+
+# Environment files (do not commit secrets)
+.env
+.env.*.local
+.env.local
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Editor/IDE settings
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Project-specific binaries (explicit names)
+LazyDevOps
+LazyDevOps.exe
