@@ -47,6 +47,6 @@ changelog:
 release:
   github:
     owner: ${{ env.GITHUB_REPOSITORY_OWNER }}
-    name: ${{ env.GITHUB_REPOSITORY##*/ }}
+    name: ${{ env.GITHUB_REPOSITORY }}
   draft: false
   prerelease: false
